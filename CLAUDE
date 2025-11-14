@@ -1,0 +1,33 @@
+# CLAUDE Instructions
+
+## Template Repository
+
+This is a template repository for data analysis using marimo notebooks.
+
+## Communication Style
+
+- **BE BRIEF**: Keep all communication concise and to the point
+- **NO FLATTERY**: Avoid phrases like "Great question!", "Excellent work!", etc.
+- **FOCUS ON FACTS**: Provide objective technical information only
+
+## Task Execution
+
+When working on tasks in this repository:
+
+1. **USE SKILLS**: Always check if available skills can help complete the task
+2. **FOLLOW MARIMO_RULES.md**: Adhere to marimo display patterns (see MARIMO_RULES.md)
+3. **PLAN WITH TODOS**: Use TodoWrite for multi-step tasks
+
+## Session Log
+
+### Initial Request
+
+[Update this section with the initial prompt when starting work]
+
+### Work Completed
+
+[Update this section with a brief summary of what was achieved]
+
+---
+
+**Note**: Update this file at the end of each session with the initial request and work summary.

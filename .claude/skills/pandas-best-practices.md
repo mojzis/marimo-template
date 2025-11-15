@@ -1,16 +1,19 @@
 # Pandas Best Practices: Elegant and Efficient Data Manipulation
 
-This skill helps you write clean, performant pandas code using method chaining, vectorization, and modern patterns.
+This skill helps you write clean, performant pandas code using method chaining, vectorization, and modern pandas 2.x+ features.
 
 ## Core Principles
 
 ### 1. **Always Vectorize - Never Loop**
-Vectorized operations are 100-2400x faster than loops. Use built-in pandas/NumPy operations.
+Vectorization isn't just syntactic convenience—it uses SIMD (Single Instruction, Multiple Data) operations in C/Cython for 100-740x speedups over Python loops.
 
 ### 2. **Method Chaining for Readability**
-Chain operations to create clear, maintainable pipelines. Each step should be obvious.
+Chain operations to create clear, maintainable pipelines treating DataFrames as immutable. Each step should be obvious.
 
-### 3. **Avoid Temporary Variables**
+### 3. **Use Modern Pandas Features**
+Enable Copy-on-Write, use nullable dtypes (Int64, string), and PyArrow backend for performance and safety.
+
+### 4. **Avoid Temporary Variables**
 Use `.assign()`, `.pipe()`, and chaining to reduce intermediate DataFrames.
 
 ---
@@ -66,6 +69,70 @@ df['result'] = result
 
 # 3. Only as last resort: apply (but profile first!)
 df['result'] = df['col'].apply(complex_func)
+```
+
+---
+
+## 🆕 Modern Pandas 2.x+ Features
+
+### Copy-on-Write (Mandatory in pandas 3.0)
+```python
+# Enable Copy-on-Write (do this at the top of your code)
+import pandas as pd
+pd.options.mode.copy_on_write = True
+
+# ❌ NEVER: Chained assignment (raises error with CoW)
+df['foo'][df['bar'] > 5] = 100
+
+# ✅ ALWAYS: Use .loc for assignment
+df.loc[df['bar'] > 5, 'foo'] = 100
+
+# Benefits: No SettingWithCopyWarning, lazy copies improve performance
+```
+
+### Nullable Dtypes (Prevent float conversion on nulls)
+```python
+# ❌ OLD: Nulls force conversion to float
+pd.Series([1, 2, None])  # dtype: float64
+
+# ✅ NEW: Nullable types preserve int/bool/string
+pd.Series([1, 2, None], dtype='Int64')  # dtype: Int64 (capital I)
+pd.Series([True, False, None], dtype='boolean')  # dtype: boolean
+pd.Series(['a', 'b', None], dtype='string')  # dtype: string
+
+# Convert existing DataFrame to nullable types
+df = df.convert_dtypes()
+
+# Use pd.NA (not np.nan) for missing values with nullable dtypes
+```
+
+### PyArrow Backend (35x faster I/O, better memory)
+```python
+# Read files with PyArrow backend
+df = pd.read_csv('data.csv', dtype_backend='pyarrow', engine='pyarrow')
+
+# Convert existing DataFrame
+df = df.convert_dtypes(dtype_backend='pyarrow')
+
+# Enable PyArrow strings by default
+pd.options.future.infer_string = True
+
+# Best for: Large datasets, string-heavy data, interop with DuckDB/Polars
+```
+
+### Modern Conditional Logic
+```python
+# ✅ NEW: case_when() for SQL-like conditional logic (pandas 2.2+)
+df['tier'] = (
+    pd.Series('default', index=df.index)
+    .case_when([
+        (df['revenue'] > 10000, 'platinum'),
+        (df['revenue'] > 5000, 'gold'),
+        (df['revenue'] > 1000, 'silver'),
+    ])
+)
+
+# Still useful: np.where for simple if-else, np.select for arrays
 ```
 
 ---
@@ -425,57 +492,135 @@ customer_summary = (
 
 ## 🎓 Key Takeaways
 
-1. **Vectorize Everything**: Use built-in pandas/NumPy operations instead of loops (100-2400x faster)
-2. **Chain Methods**: Use `.assign()`, `.query()`, `.pipe()` for readable pipelines
-3. **No Intermediate Variables**: Reduce memory by chaining instead of creating temp DataFrames
-4. **Use lambda in assign()**: Access the DataFrame with `lambda x:` for sequential operations
-5. **Profile Before Optimizing**: Use `%%timeit` to measure; don't sacrifice readability for negligible gains
-6. **Categorical for Strings**: Convert low-cardinality strings to `category` dtype
-7. **NumPy for Heavy Lifting**: Drop to `.to_numpy()` for complex numerical operations
-8. **String Operations**: Always use `.str` accessor (already vectorized)
-9. **Avoid apply()**: Especially for numeric operations; use vectorized alternatives
-10. **Named Aggregations**: Use `.agg()` with named aggregations for clarity
+### Performance & Correctness
+1. **Never use iterrows()**: 740x slower than vectorization. Use vectorized ops or itertuples() if absolutely necessary
+2. **Vectorization uses SIMD**: Not just syntax—it's C/Cython operations processing multiple elements simultaneously
+3. **Profile first**: Use `%%timeit` to measure actual bottlenecks (90/10 rule applies)
+
+### Modern Pandas (2.x → 3.0)
+4. **Enable Copy-on-Write**: `pd.options.mode.copy_on_write = True` (mandatory in pandas 3.0)
+5. **Use nullable dtypes**: Int64, boolean, string (prevent float conversion on nulls)
+6. **PyArrow for large data**: `dtype_backend='pyarrow'` for 35x faster I/O and better memory
+7. **Avoid inplace=True**: No performance benefit, breaks chaining, discouraged by pandas developers
+
+### Code Patterns
+8. **Chain everything**: Treat DataFrames as immutable; use `.assign()`, `.pipe()`, `.query()`
+9. **Never use chained indexing**: Always use `.loc` explicitly to avoid SettingWithCopyWarning
+10. **Specify dtypes at load**: Never accept defaults—use category for low-cardinality strings (100x memory reduction)
+11. **Use case_when()**: For multi-condition logic (pandas 2.2+); cleaner than nested np.where()
+12. **apply() only for strings/complex logic**: Never for numeric operations—vectorize instead
 
 ---
 
 ## 🚫 Anti-Patterns to Avoid
 
+### 1. Never Use iterrows() (740x slower than vectorization)
 ```python
-# ❌ NEVER: Loop through DataFrame
+# ❌ WORST: iterrows() creates Series objects (devastating performance)
 for idx, row in df.iterrows():
     df.loc[idx, 'new_col'] = row['a'] + row['b']
 
-# ❌ NEVER: Modify in place during chain (breaks chain)
+# ⚠️ FALLBACK: If you MUST iterate, use itertuples() (49x faster than iterrows)
+for row in df.itertuples():
+    # Access as row.column_name
+    result = row.a + row.b
+
+# ✅ BEST: Vectorize (740x faster than iterrows)
 df['new_col'] = df['a'] + df['b']
+```
 
-# ❌ NEVER: Use apply for simple arithmetic
+### 2. Avoid Chained Indexing (causes SettingWithCopyWarning)
+```python
+# ❌ WRONG: Chained indexing - may modify copy, not original!
+df['column'][df['condition'] > value] = new_value
+df[df['x'] > 0]['y'] = 10  # Unpredictable - view or copy?
+
+# ✅ CORRECT: Use .loc explicitly
+df.loc[df['condition'] > value, 'column'] = new_value
+df.loc[df['x'] > 0, 'y'] = 10
+
+# Or explicitly copy if working with subset
+subset = df[df['condition']].copy()
+subset['column'] = new_value
+```
+
+### 3. Don't Use apply() for Numeric Operations
+```python
+# ❌ WRONG: apply for simple arithmetic (10-100x slower)
 df['total'] = df.apply(lambda row: row['a'] + row['b'], axis=1)
+df['total'] = df.apply(lambda row: row['price'] * row['quantity'], axis=1)
 
-# ❌ AVOID: Deeply nested boolean indexing
-df = df[df['a'] > 0]
-df = df[df['b'] == 'active']
-df = df[df['c'] < 100]
+# ✅ CORRECT: Direct vectorization
+df['total'] = df['a'] + df['b']
+df['total'] = df['price'] * df['quantity']
+```
 
-# ✅ DO THIS: Chain everything
-df_result = (
+### 4. Avoid inplace=True (no performance benefit)
+```python
+# ❌ WRONG: inplace doesn't save memory and breaks chaining
+df.dropna(inplace=True)
+df.drop(columns=['col'], inplace=True)
+
+# ✅ CORRECT: Return new DataFrame (enables chaining)
+df = df.dropna()
+df = df.drop(columns=['col'])
+
+# Or in a chain
+df = (
     df
-    .assign(new_col=lambda x: x['a'] + x['b'])
-    .query('a > 0 & b == "active" & c < 100')
+    .dropna()
+    .drop(columns=['col'])
 )
+```
+
+### 5. Use Proper dtypes (avoid object dtype waste)
+```python
+# ❌ WRONG: Default dtypes waste memory
+df = pd.read_csv('data.csv')  # All defaults: int64, float64, object
+
+# ✅ CORRECT: Specify types at load time
+df = pd.read_csv(
+    'data.csv',
+    dtype={
+        'id': 'Int32',  # Not Int64 if values fit
+        'status': 'category',  # For repeated strings (90%+ memory reduction)
+        'name': 'string',  # Not object
+        'is_active': 'boolean'  # Not object
+    },
+    parse_dates=['created_at']
+)
+
+# Convert low-cardinality strings to category (100x memory reduction)
+# Rule: if unique_values < 50% of total rows, use category
+df['country'] = df['country'].astype('category')
 ```
 
 ---
 
-## 📚 References
+## 📚 Quick Reference
 
-- Use `.pipe()` for custom function chains
-- Use `.assign()` for adding columns (immutable)
-- Use `.query()` for filtering (cleaner than boolean indexing)
-- Use `np.select()` for complex conditionals (faster than nested np.where)
-- Use `pd.cut()` / `pd.qcut()` for binning
-- Use `.str` accessor for vectorized string operations
-- Use `.dt` accessor for vectorized datetime operations
-- Use named aggregations in `.agg()` for clarity
-- Profile with `%%timeit` in Jupyter or `pd.set_option('compute.use_numexpr', True)`
+### Essential Methods
+- `.assign()` - Add/modify columns (immutable, chainable)
+- `.pipe()` - Chain custom functions
+- `.query()` - Filter with string expressions (cleaner than boolean indexing)
+- `.loc[]` - Label-based indexing (always use for assignment)
+- `.case_when()` - Multi-condition logic (pandas 2.2+)
 
-Remember: **Readable code that's 2x slower is better than unreadable code that's 2x faster. But readable code that's also 100x faster? That's the pandas way.**
+### Performance Helpers
+- `np.select()` - Complex conditionals (faster than nested np.where)
+- `pd.cut()` / `pd.qcut()` - Binning/bucketing
+- `.str` accessor - Vectorized string operations
+- `.dt` accessor - Vectorized datetime operations
+- Named aggregations in `.agg()` - Clear, performant aggregations
+
+### Tools
+- Profile: `%%timeit` in Jupyter notebooks
+- Memory: `df.info(memory_usage='deep')` and `df.memory_usage(deep=True).sum()`
+- Type conversion: `df.convert_dtypes()` or `df.convert_dtypes(dtype_backend='pyarrow')`
+
+### Further Learning
+Based on Matt Harrison's **"Effective Pandas"** (2nd edition) and pandas 2.x/3.0 migration guides. Key insight: most pandas performance problems stem from code patterns, not library limitations. Replacing iterrows() with vectorization yields 740x speedups; proper dtypes reduce memory by 100x.
+
+---
+
+**Remember**: Readable code that's 2x slower is better than unreadable code that's 2x faster. But readable code that's also 100x faster? That's the pandas way.

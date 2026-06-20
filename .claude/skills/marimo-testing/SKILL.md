@@ -1,4 +1,5 @@
 ---
+name: marimo-testing
 description: "Testing and debugging marimo notebooks by running them as Python scripts. Use when validating notebook functionality, catching errors, or automating notebook execution."
 ---
 

@@ -1,4 +1,5 @@
 ---
+name: marimo-notebook
 description: "Guidelines for developing marimo notebooks. Use when creating or editing marimo notebook cells to ensure proper display patterns and reactive behavior."
 ---
 

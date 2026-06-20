@@ -1,3 +1,8 @@
+---
+name: pandas-best-practices
+description: "Guidelines for writing performant pandas code using vectorization, method chaining, and modern pandas 2.x+ features. Use when working with pandas DataFrames, optimizing data manipulation code, or reviewing pandas performance."
+---
+
 # Pandas Best Practices: Elegant and Efficient Data Manipulation
 
 This skill helps you write clean, performant pandas code using method chaining, vectorization, and modern pandas 2.x+ features.
